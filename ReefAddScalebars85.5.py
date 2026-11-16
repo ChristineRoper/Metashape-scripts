@@ -1,10 +1,12 @@
 # Metashape Python script for adding scalebars between paired points
 #
-# Script: AddScalebars.py
+# Script: ReefAddScalebars85.5.py
 # Description: Adds scalebars between pairs of points named like D1,D2 or H1,H2
 #
 # This script automatically creates scalebars for point pairs:
-# - Points are considered a pair if they have the same letter prefix (e.g., D1,D2 or H1,H2)
+# - Points are grouped by letter prefix (e.g., D or H) and sorted by number
+# - Within each group, markers are paired in sorted order: 1st-2nd, 3rd-4th, etc.
+#   (so if a marker is missing, e.g. D1,D3,D4, the pair would be D1-D3)
 # - Each scalebar is set to 0.0855m (the known distance between paired points)
 # - Scalebars are named after the point pair (e.g., "D1-D2" or "H1-H2")
 

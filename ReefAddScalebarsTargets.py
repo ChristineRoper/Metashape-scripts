@@ -1,17 +1,18 @@
 # Metashape Python script for adding scalebars between paired points
 #
-# Script: AddScalebars.py
+# Script: ReefAddScalebarsTargets.py
 # Description: Adds scalebars between pairs of points named like "target 1", "target 2", etc.
 #
-# This script automatically creates scalebars for point pairs:
+# This script adds one Tools menu item per scalebar length (100mm and 150mm).
+# Each menu item automatically creates scalebars for point pairs:
 # - Points are named "target 1", "target 2", "target 3", "target 4", etc.
 # - Pairs are matched: target 1-target 2, target 3-target 4, target 5-target 6, etc.
-# - Each scalebar is set to 0.0855m (the known distance between paired points)
+# - Each scalebar is set to the distance chosen from the menu (0.1m or 0.15m)
 # - Scalebars are named after the point pair (e.g., "target 1-target 2")
 
 import Metashape
 import re
-from typing import Dict, List, Tuple
+from typing import Callable, List, Tuple
 
 
 def find_point_pairs_targets(markers: List[Metashape.Marker]) -> List[Tuple[Metashape.Marker, Metashape.Marker]]:
@@ -50,63 +51,70 @@ def create_scalebar(chunk: Metashape.Chunk, marker1: Metashape.Marker, marker2: 
     Create a scalebar between two markers with the specified distance
     """
     scalebar_label = f"{marker1.label}-{marker2.label}"
-    
+
     # Check if scalebar already exists
     for scalebar in chunk.scalebars:
         if scalebar.label == scalebar_label:
             print(f"Scalebar {scalebar_label} already exists, skipping...")
             return
-    
+
     # Create new scalebar
     scalebar = chunk.addScalebar(marker1, marker2)
     scalebar.label = scalebar_label
     scalebar.reference.distance = distance
-    
+
     print(f"Created scalebar {scalebar_label} with distance {distance}m")
 
 
-def add_scalebars_100():
-    """Entry point function that will appear in Metashape Tools menu"""
-    
+def add_scalebars(scalebar_distance: float) -> None:
+    """Add scalebars of the given length (in metres) between all target pairs"""
+
     # Check if a document is open
     if not Metashape.app.document:
         Metashape.app.messageBox("Please open a Metashape document first.")
         return
-    
+
     # Get Metashape chunk
     chunk = Metashape.app.document.chunk
-    
+
     if not chunk:
         Metashape.app.messageBox("No chunk found in the document.")
         return
-    
+
     if not chunk.markers:
         Metashape.app.messageBox("No markers found in the document.")
         return
-    
+
     # Find point pairs
     pairs = find_point_pairs_targets(chunk.markers)
-    
+
     if not pairs:
         Metashape.app.messageBox("No valid point pairs found. Points should be named like 'target 1', 'target 2', 'target 3', 'target 4', etc.")
         return
-    
+
     print(f"Found {len(pairs)} point pairs:")
     for marker1, marker2 in pairs:
         print(f"  {marker1.label} - {marker2.label}")
-    
-    # Set scalebar distance (100mm)
-    scalebar_distance = 0.1
-    
+
     # Create scalebars for each pair
     created_count = 0
     for marker1, marker2 in pairs:
         create_scalebar(chunk, marker1, marker2, scalebar_distance)
         created_count += 1
-    
+
     Metashape.app.messageBox(f"Successfully created {created_count} scalebars with distance {scalebar_distance}m")
 
 
-# Register the script with Metashape
-MENU_LABEL = "Tools/Reef - Add Scalebars 100mm"
-Metashape.app.addMenuItem(MENU_LABEL, add_scalebars_100)
+def make_menu_action(scalebar_distance: float) -> Callable[[], None]:
+    """Return a no-argument function for a Metashape menu item"""
+    return lambda: add_scalebars(scalebar_distance)
+
+
+# Register one menu item per scalebar length: (menu label, distance in metres)
+SCALEBAR_MENU_ITEMS = [
+    ("Tools/Reef - Add Scalebars 100mm", 0.1),
+    ("Tools/Reef - Add Scalebars 150mm", 0.15),
+]
+
+for menu_label, distance in SCALEBAR_MENU_ITEMS:
+    Metashape.app.addMenuItem(menu_label, make_menu_action(distance))
