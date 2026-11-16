@@ -1,50 +1,47 @@
 # Metashape Python script for adding scalebars between paired points
 #
 # Script: AddScalebars.py
-# Description: Adds scalebars between pairs of points named like D1,D2 or H1,H2
+# Description: Adds scalebars between pairs of points named like "target 1", "target 2", etc.
 #
 # This script automatically creates scalebars for point pairs:
-# - Points are considered a pair if they have the same letter prefix (e.g., D1,D2 or H1,H2)
-# - Each scalebar is set to 0.0855m (the known distance between paired points)
-# - Scalebars are named after the point pair (e.g., "D1-D2" or "H1-H2")
+# - Points are named "target 1", "target 2", "target 3", "target 4", etc.
+# - Pairs are matched: target 1-target 2, target 3-target 4, target 5-target 6, etc.
+# - Each scalebar is set to 0.150m (the known distance between paired points)
+# - Scalebars are named after the point pair (e.g., "target 1-target 2")
 
 import Metashape
 import re
 from typing import Dict, List, Tuple
 
 
-def find_point_pairs(markers: List[Metashape.Marker]) -> List[Tuple[Metashape.Marker, Metashape.Marker]]:
+def find_point_pairs_targets(markers: List[Metashape.Marker]) -> List[Tuple[Metashape.Marker, Metashape.Marker]]:
     """
-    Find pairs of markers based on naming pattern (e.g., D1,D2 or H1,H2)
+    Find pairs of markers based on naming pattern "target 1", "target 2", etc.
+    Pairs are matched: target 1-target 2, target 3-target 4, target 5-target 6, etc.
     Returns list of marker pairs
     """
-    marker_groups = {}
-    
+    target_markers = {}
+
     for marker in markers:
         if not marker.label:
             continue
-            
-        # Extract letter prefix and number (e.g., "D1" -> ("D", "1"))
-        match = re.match(r'^([A-Za-z]+)(\d+)$', marker.label)
+
+        # Extract number from "target N" pattern (case-insensitive)
+        match = re.match(r'^target\s+(\d+)$', marker.label, re.IGNORECASE)
         if match:
-            prefix = match.group(1)
-            number = match.group(2)
-            
-            if prefix not in marker_groups:
-                marker_groups[prefix] = {}
-            marker_groups[prefix][number] = marker
-    
+            number = int(match.group(1))
+            target_markers[number] = marker
+
     pairs = []
-    for prefix, markers_dict in marker_groups.items():
-        numbers = sorted(markers_dict.keys(), key=int)
-        
-        # Create pairs from consecutive numbers (1,2 then 3,4, etc.)
-        for i in range(0, len(numbers) - 1, 2):
-            if i + 1 < len(numbers):
-                marker1 = markers_dict[numbers[i]]
-                marker2 = markers_dict[numbers[i + 1]]
+    # Create pairs from consecutive odd/even numbers (1-2, 3-4, 5-6, etc.)
+    # Check all odd numbers and see if the next even number exists
+    for num in target_markers.keys():
+        if num % 2 == 1:  # If this is an odd number
+            if num + 1 in target_markers:  # Check if the next even number exists
+                marker1 = target_markers[num]
+                marker2 = target_markers[num + 1]
                 pairs.append((marker1, marker2))
-    
+
     return pairs
 
 
@@ -61,16 +58,14 @@ def create_scalebar(chunk: Metashape.Chunk, marker1: Metashape.Marker, marker2: 
             return
     
     # Create new scalebar
-    scalebar = chunk.addScalebar()
+    scalebar = chunk.addScalebar(marker1, marker2)
     scalebar.label = scalebar_label
-    scalebar.point1 = marker1
-    scalebar.point2 = marker2
     scalebar.reference.distance = distance
     
     print(f"Created scalebar {scalebar_label} with distance {distance}m")
 
 
-def add_scalebars():
+def add_scalebars_150():
     """Entry point function that will appear in Metashape Tools menu"""
     
     # Check if a document is open
@@ -90,18 +85,18 @@ def add_scalebars():
         return
     
     # Find point pairs
-    pairs = find_point_pairs(chunk.markers)
+    pairs = find_point_pairs_targets(chunk.markers)
     
     if not pairs:
-        Metashape.app.messageBox("No valid point pairs found. Points should be named like D1,D2 or H1,H2.")
+        Metashape.app.messageBox("No valid point pairs found. Points should be named like 'target 1', 'target 2', 'target 3', 'target 4', etc.")
         return
     
     print(f"Found {len(pairs)} point pairs:")
     for marker1, marker2 in pairs:
         print(f"  {marker1.label} - {marker2.label}")
     
-    # Set scalebar distance (0.0855m as specified)
-    scalebar_distance = 0.0855
+    # Set scalebar distance (100mm)
+    scalebar_distance = 0.15
     
     # Create scalebars for each pair
     created_count = 0
@@ -113,5 +108,5 @@ def add_scalebars():
 
 
 # Register the script with Metashape
-MENU_LABEL = "Tools/Reef - Add Scalebars"
-Metashape.app.addMenuItem(MENU_LABEL, add_scalebars)
+MENU_LABEL = "Tools/Reef - Add Scalebars 150mm"
+Metashape.app.addMenuItem(MENU_LABEL, add_scalebars_150)
