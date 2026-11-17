@@ -8,7 +8,7 @@ See the [main README](../README.md) for how to install the scripts.
 
 **All the reef scripts need markers named `target 1`, `target 2`, `target 3`, and so on.** Targets are paired: `target 1` with `target 2`, `target 3` with `target 4`, and so on.
 
-Metashape names the targets it detects automatically like this. If it can't detect a target (for example, when the edges of a printed target are cut off), add the marker by hand and rename it to `target N`, where N is **the number printed on that target**. Metashape calls hand-added markers `point 1`, `point 2`, … by default, and the scripts ignore markers with those names.
+Metashape names the targets it detects automatically like this. If it can't detect a target (for example, when the edges of a printed target are cut off), add the marker by hand and rename it to `target N`. Metashape calls hand-added markers `point 1`, `point 2`, … by default, and the scripts ignore markers with those names. If your targets are not grouped into pairs of 1 with 2, 3 with 4, etc then you will need to rename them.
 
 Names are not case sensitive (`Target 1` also works).
 
@@ -28,7 +28,7 @@ Names are not case sensitive (`Target 1` also works).
 
 [SetDepths.py](SetDepths.py) adds the menu item **Tools → Reef - Set Marker Depths**.
 
-This levels the model and sets the marker depths to the depths measured on the dive.
+This tilts the model and moves it up or down so the markers match the depths measured on the dive.
 
 Before running it:
 
@@ -40,10 +40,10 @@ When you run it:
 1. It asks for the depth of each target. **Enter depth as a positive number** (for example `4.2`). The script stores it as a negative Z.
    - It only asks about the first target in each pair (`target 1`, `target 3`, …). The second target (`target 2`, `target 4`, …) is given the same depth.
    - Click Cancel to stop without changing anything.
-2. It fits a flat plane through the markers and rotates them so the plane is level, keeping their positions relative to each other.
-3. It sets each marker's Z to the depth you entered, and imports the new positions as the marker reference coordinates.
+2. It finds the tilt and depth that best match the depths you entered, then rotates and moves the markers to match. The markers keep their positions relative to each other: the model isn't stretched or rescaled. Its size comes from the scalebars.
+3. It imports the new positions as the marker reference coordinates.
 
-The console shows each marker's original and corrected position.
+Because the model only moves as a whole, each marker ends up close to the depth you entered, but usually not exactly on it. The console shows each marker's original and corrected position, how far it is from the depth you entered, and the overall (RMS) difference. A large difference usually means a depth was typed wrong, a marker is mislabelled, or the scalebars are wrong.
 
 ## Extract Shape Data
 

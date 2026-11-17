@@ -6,8 +6,10 @@
 # This script performs coordinate transformation to correct reef point positioning by:
 # 1. Exporting markers from Metashape to a temporary CSV file
 # 2. Finding the best-fit plane through 3D points using Principal Component Analysis (PCA)
-# 3. Rotating points to align with the horizontal plane while preserving relative positions
-# 4. Adjusting z-coordinates to match user-provided correct depths
+#    as a starting guess for which way is up
+# 3. Finding the tilt that makes the points' heights best match the user-provided depths
+# 4. Rotating and shifting the points to that tilt and depth. This is a rigid move, so
+#    distances between points are unchanged (scale comes from the scalebars)
 # 5. Importing the corrected coordinates back into Metashape
 
 import Metashape
@@ -40,7 +42,7 @@ class CoordinateTransformer:
     """
     Reef Coordinate Correction
     This code takes points with relative correct positions but incorrect orientation
-    and transforms them to match known correct z-coordinates.
+    and rigidly rotates and shifts them so their z-coordinates best match known depths.
     """
 
     @staticmethod
@@ -48,9 +50,11 @@ class CoordinateTransformer:
         points: List[Point3D], correct_z: List[float]
     ) -> List[Point3D]:
         """
-        Find the best-fit plane through a set of 3D points and transform the points
-        to align with the horizontal plane while preserving their relative positions.
-        Then adjust z-coordinates to match the correct depths.
+        Rotate and shift the points so their z-coordinates best match the correct depths
+        (least squares), while preserving their relative positions.
+
+        This is a rigid move: points are not stretched or scaled, so the corrected
+        z-coordinates will only match the correct depths as closely as the model allows.
         """
         if len(points) != len(correct_z):
             raise ValueError(
@@ -69,12 +73,68 @@ class CoordinateTransformer:
             for p in points
         ]
 
-        # Step 3: Create the covariance matrix for Principal Component Analysis (PCA)
+        if CoordinateTransformer.are_collinear(centered_points):
+            raise ValueError(
+                "The markers are (almost) in a straight line, so the tilt can't be determined"
+            )
+
+        # Step 3: Use the best-fit plane as a first guess for which way is up
+        initial_up = CoordinateTransformer.find_plane_normal(centered_points)
+
+        # Step 4: Tilt "up" so the points' heights best match the correct depths
+        mean_z = sum(correct_z) / len(correct_z)
+        z_offsets = [z - mean_z for z in correct_z]
+        up = CoordinateTransformer.fit_up_direction(
+            centered_points, z_offsets, initial_up
+        )
+
+        # Step 5: Rotate the points so "up" is the z-axis, then shift to the mean depth
+        rotation_matrix = CoordinateTransformer.calculate_rotation_matrix(up)
+        rotated_points = [
+            CoordinateTransformer.apply_rotation(p, rotation_matrix)
+            for p in centered_points
+        ]
+
+        return [
+            Point3D(p.x + centroid.x, p.y + centroid.y, p.z + mean_z)
+            for p in rotated_points
+        ]
+
+    @staticmethod
+    def are_collinear(centered_points: List[Point3D]) -> bool:
+        """True if the (centered) points all lie on, or very close to, one line"""
+        vectors = [[p.x, p.y, p.z] for p in centered_points]
+        lengths = [math.sqrt(CoordinateTransformer.dot_product(v, v)) for v in vectors]
+        longest = max(lengths)
+        if longest == 0:
+            return True
+
+        # Measure how far each point is from the line through the farthest point
+        direction = vectors[lengths.index(longest)]
+        max_offset = max(
+            math.sqrt(
+                CoordinateTransformer.dot_product(
+                    CoordinateTransformer.cross_product(direction, v),
+                    CoordinateTransformer.cross_product(direction, v),
+                )
+            )
+            / longest
+            for v in vectors
+        )
+        return max_offset < 1e-6 * longest
+
+    @staticmethod
+    def find_plane_normal(centered_points: List[Point3D]) -> List[float]:
+        """
+        Find the upward-pointing normal of the best-fit plane through the
+        (centered) points using Principal Component Analysis (PCA)
+        """
+        # Create the covariance matrix for Principal Component Analysis (PCA)
         covariance_matrix = CoordinateTransformer.create_covariance_matrix(
             centered_points
         )
 
-        # Step 4: Find the eigenvectors of the covariance matrix
+        # Find the eigenvectors of the covariance matrix
         eigenvectors, eigenvalues = CoordinateTransformer.find_eigenvectors_and_values(
             covariance_matrix
         )
@@ -82,31 +142,92 @@ class CoordinateTransformer:
         # Sort eigenvectors by eigenvalue (ascending)
         indices = sorted(range(len(eigenvalues)), key=lambda i: eigenvalues[i])
 
-        # The normal vector to the best-fit plane is the eigenvector with the smallest eigenvalue
-        normal_vector = [
-            eigenvectors[indices[0]][0],
-            eigenvectors[indices[0]][1],
-            eigenvectors[indices[0]][2],
+        # The normal vector to the best-fit plane is the eigenvector with the smallest
+        # eigenvalue. Calculate it as the cross product of the other two, because power
+        # iteration finds it unreliably (it is pure noise when the points are exactly flat)
+        normal_vector = CoordinateTransformer.normalize_vector(
+            CoordinateTransformer.cross_product(
+                eigenvectors[indices[2]], eigenvectors[indices[1]]
+            )
+        )
+
+        # Ensure normal vector points upward (since photos are taken from above)
+        return CoordinateTransformer.ensure_upward_normal(normal_vector)
+
+    @staticmethod
+    def fit_up_direction(
+        centered_points: List[Point3D],
+        z_offsets: List[float],
+        initial_up: List[float],
+    ) -> List[float]:
+        """
+        Find the unit "up" vector for which each point's height (its dot product with
+        "up") best matches its z offset, in the least-squares sense.
+
+        Uses Gauss-Newton iteration starting from initial_up: each step tilts "up"
+        towards two perpendicular directions by amounts found with linear least squares.
+        Starting from the upward plane normal keeps the result the right way up.
+        """
+        up = CoordinateTransformer.normalize_vector(initial_up)
+
+        for _ in range(100):
+            t1, t2 = CoordinateTransformer.perpendicular_vectors(up)
+
+            # Build the 2x2 normal equations for the tilt step (s1, s2)
+            a11 = a12 = a22 = b1 = b2 = 0.0
+            for p, z_offset in zip(centered_points, z_offsets):
+                coords = [p.x, p.y, p.z]
+                residual = CoordinateTransformer.dot_product(up, coords) - z_offset
+                j1 = CoordinateTransformer.dot_product(t1, coords)
+                j2 = CoordinateTransformer.dot_product(t2, coords)
+                a11 += j1 * j1
+                a12 += j1 * j2
+                a22 += j2 * j2
+                b1 += j1 * residual
+                b2 += j2 * residual
+
+            det = a11 * a22 - a12 * a12
+            if det <= 1e-12 * (a11 + a22) ** 2:
+                raise ValueError(
+                    "The markers are (almost) in a straight line, so the tilt can't be determined"
+                )
+
+            s1 = -(a22 * b1 - a12 * b2) / det
+            s2 = -(a11 * b2 - a12 * b1) / det
+
+            # Limit each step to a moderate tilt so the iteration can't jump wildly
+            step = math.sqrt(s1 * s1 + s2 * s2)
+            if step > 0.5:
+                s1 *= 0.5 / step
+                s2 *= 0.5 / step
+
+            up = CoordinateTransformer.normalize_vector(
+                [up[k] + s1 * t1[k] + s2 * t2[k] for k in range(3)]
+            )
+
+            if step < 1e-12:
+                break
+
+        return up
+
+    @staticmethod
+    def perpendicular_vectors(v: List[float]) -> Tuple[List[float], List[float]]:
+        """Return two unit vectors perpendicular to unit vector v and to each other"""
+        helper = [1.0, 0.0, 0.0] if abs(v[0]) < 0.9 else [0.0, 1.0, 0.0]
+        t1 = CoordinateTransformer.normalize_vector(
+            CoordinateTransformer.cross_product(v, helper)
+        )
+        t2 = CoordinateTransformer.cross_product(v, t1)
+        return t1, t2
+
+    @staticmethod
+    def cross_product(v1: List[float], v2: List[float]) -> List[float]:
+        """Calculate the cross product of two vectors"""
+        return [
+            v1[1] * v2[2] - v1[2] * v2[1],
+            v1[2] * v2[0] - v1[0] * v2[2],
+            v1[0] * v2[1] - v1[1] * v2[0],
         ]
-
-        # Step 4.5: Ensure normal vector points upward (since photos are taken from above)
-        normal_vector = CoordinateTransformer.ensure_upward_normal(normal_vector)
-
-        # Step 5: Calculate the rotation matrix to align the normal vector with the z-axis (0,0,1)
-        rotation_matrix = CoordinateTransformer.calculate_rotation_matrix(normal_vector)
-
-        # Step 6: Apply the rotation to all points
-        rotated_points = [
-            CoordinateTransformer.apply_rotation(p, rotation_matrix)
-            for p in centered_points
-        ]
-
-        # Step 7: Translate points back and adjust z-coordinates to match the correct depths
-        result = []
-        for i, p in enumerate(rotated_points):
-            result.append(Point3D(p.x + centroid.x, p.y + centroid.y, correct_z[i]))
-
-        return result
 
     @staticmethod
     def ensure_upward_normal(normal: List[float]) -> List[float]:
@@ -221,9 +342,10 @@ class CoordinateTransformer:
         if abs(n[0]) < 1e-10 and abs(n[1]) < 1e-10 and abs(n[2] - 1.0) < 1e-10:
             return [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
 
-        # If the normal is opposite to the z-axis, flip it
+        # If the normal is opposite to the z-axis, rotate 180° about the x-axis
+        # (not -I, which would mirror the points rather than rotate them)
         if abs(n[0]) < 1e-10 and abs(n[1]) < 1e-10 and abs(n[2] + 1.0) < 1e-10:
-            return [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]
+            return [[1, 0, 0], [0, -1, 0], [0, 0, -1]]
 
         # Calculate the rotation axis by cross product of normal and z-axis (0,0,1)
         rotation_axis = CoordinateTransformer.normalize_vector([n[1], -n[0], 0])
@@ -474,12 +596,22 @@ def georeference_reef():
         )
 
         print("Transformation results:")
-        for i, (marker_label, original, corrected) in enumerate(
-            zip(point_labels, points_to_transform, corrected_points)
+        squared_errors = []
+        for marker_label, original, corrected, correct_z in zip(
+            point_labels, points_to_transform, corrected_points, correct_z_values
         ):
+            depth_error = corrected.z - correct_z
+            squared_errors.append(depth_error * depth_error)
             print(f"  {marker_label}:")
             print(f"    Original:  {original}")
             print(f"    Corrected: {corrected}")
+            print(f"    Difference from entered depth: {depth_error:+.3f}")
+
+        rms_error = math.sqrt(sum(squared_errors) / len(squared_errors))
+        print(
+            f"RMS difference between corrected and entered depths: {rms_error:.3f}. "
+            f"Large values suggest a wrong depth, a mislabelled marker or a scale problem."
+        )
 
         update_data_rows_with_corrections(data_rows, point_labels, corrected_points)
 
