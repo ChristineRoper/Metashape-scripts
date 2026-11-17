@@ -5,7 +5,7 @@ Python scripts for [Agisoft Metashape Pro](https://www.agisoft.com/).
 - **[Reef/](Reef/)**: for reef-scale underwater photogrammetry.
 - **[CoralFragment/](CoralFragment/)**: for individual coral fragments photographed on Christine's automated turntable.
 
-Each folder has its own README describing what its scripts do.
+Each folder has its own README describing what the scripts do.
 
 ## Using the scripts
 
