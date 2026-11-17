@@ -16,7 +16,8 @@ import os
 import csv
 import math
 import random
-from typing import List, Dict, Tuple
+import re
+from typing import List, Dict, Optional, Tuple
 
 # Might have to
 # * Check all markers
@@ -273,22 +274,26 @@ class CoordinateTransformer:
         )
 
 
+def target_number(label: str) -> Optional[int]:
+    """Return N for a marker labelled "target N" (case-insensitive), otherwise None"""
+    match = re.match(r"^target\s+(\d+)$", label, re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
 def get_user_z_corrections(labels: List[str]) -> Dict[str, float]:
     """
-    Get Z-coordinate corrections from user for each point/target using Metashape dialogs
+    Get Z-coordinate corrections from user for each target using Metashape dialogs.
+    The second target of a pair (target 2, 4, ...) reuses the depth of the first.
     """
     corrections = {}
+    depth_by_number = {}
 
     for marker_label in labels:
-        # Check if it's the second one of a pair
-        match = re.match(r'^target\s+(\d+)$', marker_label, re.IGNORECASE)
-        if not match:
+        number = target_number(marker_label)
+        # The second target of a pair gets the same depth as the first
+        if number % 2 == 0 and number - 1 in depth_by_number:
+            corrections[marker_label] = depth_by_number[number - 1]
             continue
-        number = int(match.group(1))
-        if number % 2 == 0:  # If this is an even number
-            if f'target {number-1}' in corrections:
-                corrections[f'target {number}'] = corrections[f'target {number-1}']
-                continue
 
         while True:
             try:
@@ -299,6 +304,7 @@ def get_user_z_corrections(labels: List[str]) -> Dict[str, float]:
                     raise RuntimeError("User cancelled depth input")
                 z_value = -float(depth_str)
                 corrections[marker_label] = z_value
+                depth_by_number[number] = z_value
                 break
             except ValueError:
                 Metashape.app.messageBox("Please enter a valid number.")
@@ -360,11 +366,14 @@ def write_reference_file(
 def extract_points_with_coordinates(
     data_rows: List[Dict[str, str]],
 ) -> Tuple[List[Point3D], List[str]]:
-    """Extract points that have estimated coordinates"""
+    """Extract "target N" markers that have estimated coordinates"""
     points_to_transform = []
     point_labels = []
 
     for row in data_rows:
+        if target_number(row["#Label"]) is None:
+            print(f"Skipping {row['#Label']}: not named like 'target 1'")
+            continue
         if (
             row.get("X_est")
             and row.get("Y_est")
@@ -441,8 +450,9 @@ def georeference_reef():
         points_to_transform, point_labels = extract_points_with_coordinates(data_rows)
 
         if len(points_to_transform) < 3:
-            print(
-                "Error: Need at least 3 points with estimated coordinates for transformation."
+            Metashape.app.messageBox(
+                "Need at least 3 markers with estimated positions, named like "
+                "'target 1', 'target 2', etc."
             )
             return
 

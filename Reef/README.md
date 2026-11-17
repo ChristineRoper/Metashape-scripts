@@ -4,31 +4,22 @@ Scripts for reef-scale underwater photogrammetry.
 
 See the [main README](../README.md) for how to install the scripts.
 
-## Add Scalebars 85.5mm
+## Marker names
 
-Use this script where the distance between targets is 85.5 mm
+**All the reef scripts need markers named `target 1`, `target 2`, `target 3`, and so on.** Targets are paired: `target 1` with `target 2`, `target 3` with `target 4`, and so on.
 
-[AddScalebars85.5.py](AddScalebars85.5.py) adds the menu item **Tools → Reef - Add Scalebars 85.5mm**.
+Metashape names the targets it detects automatically like this. If it can't detect a target (for example, when the edges of a printed target are cut off), add the marker by hand and rename it to `target N`, where N is **the number printed on that target**. Metashape calls hand-added markers `point 1`, `point 2`, … by default, and the scripts ignore markers with those names.
 
-For the 85.5mm markers printed from Metashape, sometimes the edges are cut off which means Metashape will not automatically identify them. In that case, you must manually add the markers
+Names are not case sensitive (`Target 1` also works).
 
-- Make sure they are named: A1, A2, B1, B2 etc
-- Markers are grouped by letter, then sorted by number.
-- Within each group, markers are paired in order: 1st with 2nd, 3rd with 4th, and so on.
-- Existing scalebars with the same name are left as they are.
+## Add Scalebars
 
-## Add Scalebars (targets)
+[AddScalebars.py](AddScalebars.py) adds the menu item **Tools → Reef - Add Scalebars**.
 
-[AddScalebarsTargets.py](AddScalebarsTargets.py) adds two menu items:
+1. It asks for the distance between the targets in each pair, **in mm**. For example, 15cm is `150` and 8.55cm is `85.5`.
+   - Click Cancel to stop without adding anything.
+2. It adds a scalebar of that length between each pair of markers named `target 1` and `target 2`, `target 3` and `target 4`, and so on.
 
-- **Tools → Reef - Add Scalebars 100mm**
-- **Tools → Reef - Add Scalebars 150mm**
-
-Choose the menu item that matches the distance between the targets in each pair.
-
-It adds a scalebar between each pair of markers named `target 1` and `target 2`, `target 3` and `target 4`, and so on.
-
-- Names are not case sensitive (`Target 1` also works).
 - If a pair is missing one target, the pair is skipped (add the target manually if this is the case)
 - Each scalebar is named after its pair, for example `target 1-target 2`.
 - The script only **adds** scalebars. If a scalebar with that name already exists, it is left as it is, even if its distance is different.
@@ -42,12 +33,12 @@ This levels the model and sets the marker depths to the depths measured on the d
 Before running it:
 
 - Align the photos, so the markers have estimated positions.
-- Name the markers `target 1`, `target 2`, and so on. You need at least 3 markers with estimated positions.
+- Name the markers `target 1`, `target 2`, and so on (see [Marker names](#marker-names)). You need at least 3 markers with estimated positions. Markers with other names are ignored.
 
 When you run it:
 
 1. It asks for the depth of each target. **Enter depth as a positive number** (for example `4.2`). The script stores it as a negative Z.
-   - If it only asks about the first target in each pair (`target 1`, `target 3`, …). The second target (`target 2`, `target 4`, …) is given the same depth.
+   - It only asks about the first target in each pair (`target 1`, `target 3`, …). The second target (`target 2`, `target 4`, …) is given the same depth.
    - Click Cancel to stop without changing anything.
 2. It fits a flat plane through the markers and rotates them so the plane is level, keeping their positions relative to each other.
 3. It sets each marker's Z to the depth you entered, and imports the new positions as the marker reference coordinates.
