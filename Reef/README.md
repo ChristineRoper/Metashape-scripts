@@ -50,15 +50,14 @@ Because the model only moves as a whole, each marker ends up close to the depth 
 [ExtractShapeData.py](ExtractShapeData.py) adds the menu item **Tools → Reef - Extract Shape data**.
 
 It exports the shapes in the current chunk so you can open them in Excel. For each shape it includes the label, any attributes, the area and the fitted area.
-NOTE: There are many different ways to measure surface area, including Mesh area, DEM and Projected Area, and hidden surfaces area. Ensure the type of surface area extracted by this code is what is best suited to your project obecjtive.
+NOTE: There are many different ways to measure surface area, including Mesh area, DEM and projected area, and hidden surface area. Ensure the type of surface area extracted by this code (listed below) is what is best suited to your project obecjtive.
+
+- **Area**: Calculates the area by projecting the shape vertices directly onto the flat XY plane of the project's coordinate system. It completely ignores any Z (elevation/height) variations, treating the shape as a flat footprint from a top-down, 2D map view.
+- **Area Fitted**: Calculates the area covered by the shape on a best-fit plane that is dynamically computed using the 3D (XYZ) coordinates of the shape's vertices. This accounts for a tilted or sloped surface rather than flattening everything onto a strict horizontal XY plane.
+- **DEM Surface area**: Not calculated by this script.
+- **Model 3D Surface area**: Not calculated by this script.
 
 1. Run the menu item.
 2. In the console (**View → Console**), copy the text below the line `↓↓↓ Copy Below ↓↓↓`.
 3. Go to <https://www.convertcsv.com/json-to-csv.htm> and paste it into **Step 1**.
 4. Under **Step 3**, click **JSON to Excel**.
-
-- **Area**: Calculates the area by projecting the shape vertices directly onto the flat XY plane of the project's coordinate system. It completely ignores any Z (elevation/height) variations, treating the shape as a flat footprint from a top-down, 2D map view.
-
-- **Area Fitted**: Calculates the area covered by the shape on a best-fit plane that is dynamically computed using the 3D (XYZ) coordinates of the shape's vertices. This accounts for a tilted or sloped surface rather than flattening everything onto a strict horizontal XY plane.
-- **DEM Surface area**: Not calculated by this script.
-- **Model 3D Surface area**: Not calculated by this script.
