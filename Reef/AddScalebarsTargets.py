@@ -1,6 +1,6 @@
 # Metashape Python script for adding scalebars between paired points
 #
-# Script: ReefAddScalebarsTargets.py
+# Script: AddScalebarsTargets.py
 # Description: Adds scalebars between pairs of points named like "target 1", "target 2", etc.
 #
 # This script adds one Tools menu item per scalebar length (100mm and 150mm).
@@ -9,13 +9,16 @@
 # - Pairs are matched: target 1-target 2, target 3-target 4, target 5-target 6, etc.
 # - Each scalebar is set to the distance chosen from the menu (0.1m or 0.15m)
 # - Scalebars are named after the point pair (e.g., "target 1-target 2")
+# - Only ADDS scalebars. If there are existing scalebars they will not be updated
 
 import Metashape
 import re
 from typing import Callable, List, Tuple
 
 
-def find_point_pairs_targets(markers: List[Metashape.Marker]) -> List[Tuple[Metashape.Marker, Metashape.Marker]]:
+def find_point_pairs_targets(
+    markers: List[Metashape.Marker],
+) -> List[Tuple[Metashape.Marker, Metashape.Marker]]:
     """
     Find pairs of markers based on naming pattern "target 1", "target 2", etc.
     Pairs are matched: target 1-target 2, target 3-target 4, target 5-target 6, etc.
@@ -28,7 +31,7 @@ def find_point_pairs_targets(markers: List[Metashape.Marker]) -> List[Tuple[Meta
             continue
 
         # Extract number from "target N" pattern (case-insensitive)
-        match = re.match(r'^target\s+(\d+)$', marker.label, re.IGNORECASE)
+        match = re.match(r"^target\s+(\d+)$", marker.label, re.IGNORECASE)
         if match:
             number = int(match.group(1))
             target_markers[number] = marker
@@ -46,7 +49,12 @@ def find_point_pairs_targets(markers: List[Metashape.Marker]) -> List[Tuple[Meta
     return pairs
 
 
-def create_scalebar(chunk: Metashape.Chunk, marker1: Metashape.Marker, marker2: Metashape.Marker, distance: float) -> None:
+def create_scalebar(
+    chunk: Metashape.Chunk,
+    marker1: Metashape.Marker,
+    marker2: Metashape.Marker,
+    distance: float,
+) -> None:
     """
     Create a scalebar between two markers with the specified distance
     """
@@ -89,7 +97,9 @@ def add_scalebars(scalebar_distance: float) -> None:
     pairs = find_point_pairs_targets(chunk.markers)
 
     if not pairs:
-        Metashape.app.messageBox("No valid point pairs found. Points should be named like 'target 1', 'target 2', 'target 3', 'target 4', etc.")
+        Metashape.app.messageBox(
+            "No valid point pairs found. Points should be named like 'target 1', 'target 2', 'target 3', 'target 4', etc."
+        )
         return
 
     print(f"Found {len(pairs)} point pairs:")
@@ -102,7 +112,9 @@ def add_scalebars(scalebar_distance: float) -> None:
         create_scalebar(chunk, marker1, marker2, scalebar_distance)
         created_count += 1
 
-    Metashape.app.messageBox(f"Successfully created {created_count} scalebars with distance {scalebar_distance}m")
+    Metashape.app.messageBox(
+        f"Successfully created {created_count} scalebars with distance {scalebar_distance}m"
+    )
 
 
 def make_menu_action(scalebar_distance: float) -> Callable[[], None]:
